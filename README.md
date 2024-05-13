@@ -43,7 +43,7 @@ Instead the PATLITE signal tower is an example of needing a "high side switch", 
 
 Fortunately the high side switch use case is quite common, to the point that it is supported by readily available integrated circuits like the Toshiba TBD62783A, which combines eight such high side switch drivers on a single 18-pin IC.  You'll find Toshiba's [application note](https://toshiba.semicon-storage.com/info/TBD62783APG_application_note_en_20160516_AKX00417.pdf?did=35900&prodName=TBD62783APG) for the TBD62783A provides all the necessary details including a great application circuit example in driving LEDs in high side switch configuration.
 
-To use lights in flashing mode, the PATLITE internal controller generates a special 24VDC feed it supplies via  the brown wire. If you connect lights to the brown 24VDC supply they will blink in unison, as opposed to feeding them from the continuously on 24VDC feed (grey wire).
+To use lights in flashing mode the PATLITE internal controller generates a special 24VDC feed it supplies via the brown wire. If you connect lights to the brown 24VDC supply they will blink in unison, as opposed to feeding them from the continuously-on 24VDC feed (grey wire).  I didn't plan to use flashing mode so didn't take advantage of this capability (though may very well add it later).
 
 
 ## Sketch Usage Notes
@@ -54,7 +54,7 @@ I used an [Adafruit ESP32 Feather V2](https://www.adafruit.com/product/5400) so 
 
 ### Basic Wiring
 
-Four digital outputs from the microcontroller, in my case pins 14, 15, 32 and 33 are fed to inputs on four high side switches on the TBD62783A. The outputs of those switches are connected to the individual lamp leads in the PATLITE wiring harness.
+Four digital outputs from the microcontroller, in my case pins 14, 15, 32 and 33, are fed to inputs on four high side switches on the TBD62783A. The outputs of those switches are connected to the individual lamp leads in the PATLITE wiring harness.
 
 The TBD62783A also takes 24VDC from an external supply on its VCC pin.  To power the Feather ESP32 V2 a Traco Power [TSR 1-2450E](https://www.tracopower.com/model/tsr-1-2450e) DC-to-DC converter generates 5VDC from the 24VDC supply.  (I initially used a LM7805 voltage regulator to power the ESP32 but found it got uncomfortably hot resistively dissipating the nineteen volt drop from 24VDC to 5VDC. Happily the TSR 1-2450E is a drop-in replacement for the LM7805 and only a tiny bit larger.)
 
