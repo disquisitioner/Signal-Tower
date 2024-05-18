@@ -74,7 +74,15 @@ Home Assistant integration does not use the whole-tower MQTT publish or subscrib
 
 Wifi network parameters and MQTT broker settings are expected to be provided in a separate `secrets.h` header file.  A template for that file is provided here as `secrets_template.h`, which should be copied and modified to create a `secrets.h` file appropriate for the target deployment environment.
 
+### Monitoring
 
+MQTT integration makes it reasonably easy to monitor and control the signal tower remotely, though depends on a suitable MQTT broker and client tools to interact with it (and/or via Home Assistant).  To provide other ways of following operations and changes in state, the sketch allows enabling status messaging with [Dweet.io](https://dweet.io) as well as use of the ESP32 V2 Feather's onboard Neopixel.  Either or both of these can be enabled through `#define` statements in `config.h`.
+
+### Footnote
+On two occasions the ESP32 V2 Feather has had unrecoverable failures, with the hardware needing to be replaced.  Both times the problem occured after a power outage.  After some investigation I have reason to believe the Traco Power DC-to-DC converter can generate significant voltage spikes when started up, and have found notes from others who've had [similar experiences](https://electronics.stackexchange.com/questions/645169/how-to-eliminate-3-3v-regulator-output-spiking).  Diagnosing this problem continues, but as an interim workaround I've added an RC filter to the output of the Traco converter to surpress voltage transients.  Doing so introduces an additional complication as the resistor in the RC filter reduces effective output voltage of the converter to below 5V, which can compromise operation of the Feather's onboard regulator that converts 5V from USB for the ESP32. Adjusting resistor size helps mitigate this problem, as does plugging a battery into the JST connector on the ESP32 V2 Feather.
+
+## Python Support
+Remote control of the signal tower via MQTT means it can be managed in a variety of ways. To demonstrate and take advantage of this, the `signal_tower.py` script included here allows command line operation of lights in the tower.  Configuration of the script is accomplished through settings in a separate `signal_tower.ini` file, a template for which can be found in `signal_tower_template.ini`.  Note that the topics configured for use by the Python script must match those in the `Signal-Tower.ino` sketch.
 
 
 

@@ -1,7 +1,15 @@
 #include <WiFi.h>
+#include "config.h"
 #include "secrets.h"
 #include <Adafruit_MQTT.h>
 #include <Adafruit_MQTT_Client.h>
+
+// The onboard Neopixel is useful in confirming proper start-up and
+// conneciton to WiFi, and also optionally (via the USE_NEOPIXEL define
+// in config.h) in debugging remote command processing
+#include <Adafruit_NeoPixel.h>
+Adafruit_NeoPixel pixel(1,PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
+
 
 /*
  * Home Assistant YAML configuration for each light
@@ -39,6 +47,11 @@
 #define LAMPPIN_YELLOW 15
 #define LAMPPIN_GREEN 32
 #define LAMPPIN_BLUE  14
+
+#ifdef DWEET
+  extern void post_dweet(uint8_t tower_state, String message);
+  long timeLastDweet = -(dweetInterval * 1000);  // Set to trigger on first loop()
+#endif 
 
 // MQTT uses WiFiClient class to create TCP connections
 WiFiClient client;
@@ -97,6 +110,11 @@ void towercmdcallback(char *data, uint16_t len) {
   // Publish the new light state info (for all four lights) using the same Command syntax
   Serial.println("Publishing new command");
   towerPublish.publish(String(tower_state).c_str());  // Use actual state, not just data received
+  #ifdef DWEET
+    // Dweet status update, given things changed
+      post_dweet(tower_state, "Tower command");
+      timeLastDweet = millis();  // Reset dweet heartbeat timing
+  #endif
 }
 void redcmdcallback(char *data, uint16_t len) {
   Serial.print("New Red command received, value (string) is: ");
@@ -161,6 +179,12 @@ void setup() {
   pinMode(LAMPPIN_GREEN,OUTPUT);
   pinMode(LAMPPIN_BLUE,OUTPUT);
 
+
+  // Initialize the Neopixel and set it to red at startup
+  pixel.begin();
+  pixel.setBrightness(50);  // About 1/5 maximum (0-255);
+  pixel.clear(); pixel.setPixelColor(0,pixel.Color(50,0,0)); pixel.show();
+
   // Connect to WiFi so we can pub/sub with MQTT
   Serial.print("Connecting to ");
   Serial.println(WIFI_SSID);
@@ -175,6 +199,9 @@ void setup() {
   Serial.print("WiFi connected, IP address: ");
   Serial.println(WiFi.localIP());
 
+  // Green to indicate WiFi connected
+  pixel.clear(); pixel.setPixelColor(0,pixel.Color(0,50,0)); pixel.show();
+
   // Enable command notification callback, and
   // subscribe to receive those notifications.  
   // Must configure before connecting to MQTT Broker.
@@ -185,7 +212,7 @@ void setup() {
   yellowCommand.setCallback(yellowcmdcallback); ha_mqtt.subscribe(&yellowCommand);
 
   // Start up lamp sequence
-  processCommand(0b0000);  delay(500);
+  processCommand(0b0000);  delay(500);  tower_state = 0;  // Initialized all OFF
   processCommand(0b0001);  delay(500);
   processCommand(0b0010);  delay(500);
   processCommand(0b0100);  delay(500);
@@ -197,12 +224,19 @@ void setup() {
   blueStatePub.publish(LIGHT_ON);
   yellowStatePub.publish(LIGHT_ON);
 
+  // Report initialized and online (with start-up state)
+  publishUpdate("Initialized!");
+
   Serial.println("Processing MQTT commands");
+  // Turn Neopixel off (it may get used later, though)
+  pixel.clear(); pixel.setPixelColor(0,pixel.Color(0,0,0)); pixel.show();
 }
 
 uint32_t pubcnt = 0;
 
 void loop() {
+
+  unsigned long timeCurrent = millis();
   // Ensure the connection to the MQTT server is alive (this will make the first
   // connection and automatically reconnect when disconnected).  See the MQTT_connect
   // function definition further below.
@@ -217,6 +251,15 @@ void loop() {
   if(! ha_mqtt.ping()) {
     ha_mqtt.disconnect();
   }
+
+  // See if we need to emit a Dweet heartbeat
+  #ifdef DWEET
+    timeCurrent = millis();
+    if( (timeCurrent - timeLastDweet) > (dweetInterval*1000) ) {
+      post_dweet(tower_state, "Dweet heartbeat");
+      timeLastDweet = timeCurrent;  // Reset dweet heartbeat timing
+    }
+  #endif
 }
 
 // Function to connect and reconnect as necessary to the MQTT server.
@@ -248,7 +291,8 @@ void MQTT_connect() {
 
 // Interpret a command for the entire tower (all four lights) received via MQTT
 // Currently just turns lights on and off using low four bits, where
-// 0 = off and 1 = on.
+// 0 = off and 1 = on. Does not publish status changes, allowing that to be
+// handled seperately as appropriate
 void processCommand(int command)
 {
   if(command & red_mask) {
@@ -280,12 +324,18 @@ void processCommand(int command)
 // Handle everything associated with turning the red light on
 void redOn(bool publish)
 {
-  digitalWrite(LAMPPIN_RED,HIGH);  // Turn the light on  
+  digitalWrite(LAMPPIN_RED,HIGH);  // Turn the light 
+  #ifdef USE_NEOPIXEL
+    pixel.clear(); pixel.setPixelColor(0,pixel.Color(150,0,0)); pixel.show();
+  #endif
+
   Serial.println("Red = ON");
   redStatePub.publish(LIGHT_ON);
 
   tower_state |= red_mask;   // Set red lamp indicator bit
-  if(publish == true) towerPublish.publish(String(tower_state).c_str());
+  if(publish == true) {
+    publishUpdate("Red on command");
+  }
 }
 void redOff(bool publish)
 {
@@ -294,17 +344,25 @@ void redOff(bool publish)
   redStatePub.publish(LIGHT_OFF);
   
   tower_state &= ~red_mask;  // Clear red lamp indicator bit
-  if(publish == true) towerPublish.publish(String(tower_state).c_str());
+  if(publish == true) {
+    publishUpdate("Red off command");
+  }
 }
 
 void greenOn(bool publish)
 {
   digitalWrite(LAMPPIN_GREEN,HIGH);
+  #ifdef USE_NEOPIXEL
+    pixel.clear(); pixel.setPixelColor(0,pixel.Color(0,150,0)); pixel.show();
+  #endif
+
   Serial.println("Green = ON");
   greenStatePub.publish(LIGHT_ON);
 
   tower_state |= green_mask;  // Set green lamp indicator bit
-  if(publish == true) towerPublish.publish(String(tower_state).c_str());
+  if(publish == true) {
+    publishUpdate("Green on command");
+  }
 }
 
 void greenOff(bool publish)
@@ -314,17 +372,25 @@ void greenOff(bool publish)
   greenStatePub.publish(LIGHT_OFF);
 
   tower_state &= ~green_mask; // Clear green lamp indicator bit
-  if(publish == true) towerPublish.publish(String(tower_state).c_str());
+  if(publish == true) {
+    publishUpdate("Green off command");
+  }
 }
 
 void blueOn(bool publish)
 {
   digitalWrite(LAMPPIN_BLUE,HIGH);
+  #ifdef USE_NEOPIXEL
+    pixel.clear(); pixel.setPixelColor(0,pixel.Color(0,0,150)); pixel.show();
+  #endif
+  
   Serial.println("Blue = ON");
   blueStatePub.publish(LIGHT_ON);
 
   tower_state |= blue_mask;  // Set blue lamp indicator bit
-  if(publish == true) towerPublish.publish(String(tower_state).c_str());
+  if(publish == true) {
+    publishUpdate("Blue on command");
+  }
 }
 
 void blueOff(bool publish)
@@ -334,17 +400,25 @@ void blueOff(bool publish)
   blueStatePub.publish(LIGHT_OFF);
 
   tower_state &= ~blue_mask;  // Clear blue lamp indicator bit
-  if(publish == true) towerPublish.publish(String(tower_state).c_str());
+  if(publish == true) {
+    publishUpdate("Blue off command");
+  }
 }
 
 void yellowOn(bool publish)
 {
   digitalWrite(LAMPPIN_YELLOW,HIGH);
+  #ifdef USE_NEOPIXEL
+    pixel.clear(); pixel.setPixelColor(0,pixel.Color(150,150,0)); pixel.show();
+  #endif
+
   Serial.println("Yellow = ON");
   yellowStatePub.publish(LIGHT_ON);
 
   tower_state |= yellow_mask;  // Set yellow lamp indicator bit
-  if(publish == true)towerPublish.publish(String(tower_state).c_str());
+  if(publish == true) {
+    publishUpdate("Yellow on command");
+  }
 }
 
 void yellowOff(bool publish)
@@ -354,5 +428,19 @@ void yellowOff(bool publish)
   yellowStatePub.publish(LIGHT_OFF);
 
   tower_state &= ~yellow_mask;  // Clear yellow lamp indicator bit
-  if(publish == true) towerPublish.publish(String(tower_state).c_str());
+  if(publish == true) {
+    publishUpdate("Yellow off command");
+  }
+}
+
+// Convenience function to publish updated tower state, minimally to 
+// MQTT but also possibly to Dweet
+void publishUpdate(String message)
+{
+    towerPublish.publish(String(tower_state).c_str());
+    #ifdef DWEET
+      // Dweet status update, given things changed
+      post_dweet(tower_state, message);
+      timeLastDweet = millis();  // Reset dweet heartbeat timing
+    #endif
 }
