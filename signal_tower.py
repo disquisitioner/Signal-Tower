@@ -4,14 +4,6 @@ import paho.mqtt.client as mqtt
 
 CONFIGFILE = "signal_tower.ini"
 
-broker="homeassistant.local"
-port=1883
-user="mqtt-user"
-passwd="koala-biology-barbell"
-
-topic="deerfield/signaltower/green/switch"
-
-
 # Process args first, so everything there is validated
 parser = argparse.ArgumentParser()
 
@@ -39,11 +31,12 @@ redtopic = config['TOPICS']['redtopic']
 greentopic = config['TOPICS']['greentopic']
 bluetopic = config['TOPICS']['bluetopic']
 yellowtopic = config['TOPICS']['yellowtopic']
+towertopic = config['TOPICS']['towertopic']
 
 # Establish connection to MQTT broker
 client = mqtt.Client()
 client.username_pw_set(user,passwd)
-client.connect(broker,port,60)
+client.connect(host,port,60)
 
 # Send control messages as specified in our command line arguments
 if args.red:
